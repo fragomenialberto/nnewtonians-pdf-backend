@@ -1,4 +1,5 @@
 import os
+import base64
 import re
 import shutil
 import subprocess
@@ -77,5 +78,43 @@ def compile_latex(payload: LatexInput):
             media_type="application/pdf",
             headers={"Content-Disposition": f'attachment; filename="{out_name}"'}
 )
+
+@app.post("/compile_base64")
+def compile_latex_base64(payload: LatexInput):
+    latex = payload.latex
+    if not latex or len(latex) < 50:
+        raise HTTPException(status_code=400, detail="LaTeX content is too short or missing.")
+
+    out_name = safe_filename(payload.filename or "nnewtonians_report.pdf")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        tex_path = tmp / "main.tex"
+        pdf_path = tmp / "main.pdf"
+        tex_path.write_text(latex, encoding="utf-8")
+
+        cmd = ["pdflatex", "-interaction=nonstopmode", "-halt-on-error", "main.tex"]
+
+        try:
+            subprocess.run(cmd, cwd=tmp, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
+            subprocess.run(cmd, cwd=tmp, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
+        except FileNotFoundError:
+            raise HTTPException(status_code=500, detail="pdflatex not found on server.")
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=500, detail="LaTeX compilation timed out.")
+        except subprocess.CalledProcessError as e:
+            log = e.stdout.decode("utf-8", errors="replace") if e.stdout else "Compilation failed."
+            raise HTTPException(status_code=400, detail=f"LaTeX compilation error:\n{log[:2000]}")
+
+        if not pdf_path.exists():
+            raise HTTPException(status_code=500, detail="PDF was not produced.")
+
+        pdf_b64 = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
+
+        return {
+            "filename": out_name,
+            "mime_type": "application/pdf",
+            "pdf_base64": pdf_b64
+        }
 
 
