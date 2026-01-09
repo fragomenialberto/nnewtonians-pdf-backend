@@ -69,10 +69,13 @@ def compile_latex(payload: LatexInput):
 
         # Return the PDF directly as a downloadable file
         # Copy it to a stable temp file location for FileResponse
-        final_path = tmp / out_name
-        shutil.copyfile(pdf_path, final_path)
-        return FileResponse(
-            path=str(final_path),
+        # Return the PDF directly as a downloadable file
+        # Copy it to a stable temp file location for FileResponse
+        pdf_bytes = pdf_path.read_bytes()
+        return Response(
+            content=pdf_bytes,
             media_type="application/pdf",
-            filename=out_name
-        )
+            headers={"Content-Disposition": f'attachment; filename="{out_name}"'}
+)
+
+
